@@ -167,7 +167,8 @@ app.get('/note/:id', async (req, res) => {
       margin-bottom: 15px;
     }
     .markdown code {
-      background: #f4f4f4;
+      background: #f0f4f8 !important;
+      color: #2c3e50 !important;
       padding: 2px 6px;
       border-radius: 3px;
       font-family: 'Courier New', monospace;
@@ -182,9 +183,9 @@ app.get('/note/:id', async (req, res) => {
       border: 1px solid #e0e6ed;
     }
     .markdown pre code {
-      background: none;
+      background: transparent !important;
+      color: #2c3e50 !important;
       padding: 0;
-      color: inherit;
     }
     .markdown blockquote {
       border-left: 4px solid #3498db;
