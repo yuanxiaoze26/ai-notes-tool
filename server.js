@@ -2,25 +2,120 @@ const express = require('express');
 const marked = require('marked');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs').promises;
+const session = require('express-session');
+
+const { initDatabase, getDb } = require('./database');
+const { registerUser, loginUser, getUserById } = require('./auth');
 
 const app = express();
 const PORT = process.env.PORT || 80;
 
+// 初始化数据库
+let db;
+async function startServer() {
+  try {
+    db = await initDatabase();
+    console.log('✅ Database initialized');
+    app.listen(PORT, () => {
+      console.log(`🚀 OpenMD server running on port ${PORT}`);
+      console.log(`📝 API: http://localhost:${PORT}/api/notes`);
+      console.log(`🌐 Web: http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ Failed to start server:', err);
+    process.exit(1);
+  }
+}
+
 // 中间件
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+app.use(session({
+  secret: 'openmd-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 } // 7天
+}));
 
-// 内存存储（生产环境应使用数据库）
-const notes = new Map();
-
-// 生成唯一ID
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+// 检查登录状态
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: '请先登录' });
+  }
+  next();
 }
 
-// API: 创建笔记
+// ============ 用户相关 API ============
+
+// 注册
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: '用户名、邮箱和密码不能为空' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: '密码至少6位' });
+    }
+
+    const user = await registerUser(username, email, password);
+    req.session.userId = user.id;
+    req.session.username = user.username;
+
+    res.json({
+      success: true,
+      user: { id: user.id, username: user.username, email: user.email }
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(400).json({ error: error.message || '注册失败' });
+  }
+});
+
+// 登录
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+
+    const user = await loginUser(username, password);
+    req.session.userId = user.id;
+    req.session.username = user.username;
+
+    res.json({
+      success: true,
+      user: { id: user.id, username: user.username, email: user.email }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(401).json({ error: error.message || '登录失败' });
+  }
+});
+
+// 登出
+app.post('/api/auth/logout', (req, res) => {
+  req.session.destroy();
+  res.json({ success: true });
+});
+
+// 获取当前用户
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  try {
+    const user = await getUserById(req.session.userId);
+    res.json({ user });
+  } catch (error) {
+    res.status(500).json({ error: '获取用户信息失败' });
+  }
+});
+
+// ============ 笔记相关 API ============
+
+// 创建笔记
 app.post('/api/notes', async (req, res) => {
   try {
     const { title, content, metadata = {} } = req.body;
@@ -29,95 +124,221 @@ app.post('/api/notes', async (req, res) => {
       return res.status(400).json({ error: 'Content is required' });
     }
 
-    const id = generateId();
-    const note = {
-      id,
-      title: title || 'Untitled',
-      content,
-      metadata,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    const userId = req.session.userId || null;
+    const metadataStr = JSON.stringify(metadata);
 
-    notes.set(id, note);
+    const db = getDb();
+    const stmt = db.prepare(
+      'INSERT INTO notes (user_id, title, content, metadata) VALUES (?, ?, ?, ?)'
+    );
 
-    res.json({
-      id,
-      url: `${req.protocol}://${req.get('host')}/note/${id}`,
-      ...note
+    stmt.run([userId, title || 'Untitled', content, metadataStr], function(err) {
+      if (err) {
+        console.error('Error creating note:', err);
+        return res.status(500).json({ error: '创建笔记失败' });
+      }
+
+      res.json({
+        id: this.lastID,
+        title: title || 'Untitled',
+        content,
+        metadata,
+        userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
     });
+
+    stmt.finalize();
   } catch (error) {
     console.error('Error creating note:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// API: 获取笔记（用于Agent读取）
+// 获取笔记
 app.get('/api/notes/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const note = notes.get(id);
+    const db = getDb();
+    db.get(
+      'SELECT * FROM notes WHERE id = ?',
+      [req.params.id],
+      (err, note) => {
+        if (err) {
+          console.error('Error fetching note:', err);
+          return res.status(500).json({ error: '获取笔记失败' });
+        }
 
-    if (!note) {
-      return res.status(404).json({ error: 'Note not found' });
-    }
+        if (!note) {
+          return res.status(404).json({ error: 'Note not found' });
+        }
 
-    res.json(note);
+        // 解析 metadata
+        note.metadata = note.metadata ? JSON.parse(note.metadata) : {};
+
+        res.json(note);
+      }
+    );
   } catch (error) {
     console.error('Error fetching note:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// API: 更新笔记
+// 更新笔记
 app.put('/api/notes/:id', async (req, res) => {
   try {
-    const { id } = req.params;
     const { title, content, metadata } = req.body;
-    const note = notes.get(id);
+    const db = getDb();
 
-    if (!note) {
-      return res.status(404).json({ error: 'Note not found' });
-    }
+    db.get('SELECT * FROM notes WHERE id = ?', [req.params.id], (err, note) => {
+      if (err) {
+        return res.status(500).json({ error: '更新笔记失败' });
+      }
 
-    if (title) note.title = title;
-    if (content) note.content = content;
-    if (metadata) note.metadata = { ...note.metadata, ...metadata };
-    note.updatedAt = new Date().toISOString();
+      if (!note) {
+        return res.status(404).json({ error: 'Note not found' });
+      }
 
-    res.json(note);
+      // 如果有用户，检查权限
+      if (note.user_id && req.session.userId !== note.user_id) {
+        return res.status(403).json({ error: '无权修改此笔记' });
+      }
+
+      const updates = [];
+      const values = [];
+
+      if (title !== undefined) {
+        updates.push('title = ?');
+        values.push(title);
+      }
+      if (content !== undefined) {
+        updates.push('content = ?');
+        values.push(content);
+      }
+      if (metadata !== undefined) {
+        updates.push('metadata = ?');
+        values.push(JSON.stringify(metadata));
+      }
+
+      updates.push('updated_at = CURRENT_TIMESTAMP');
+      values.push(req.params.id);
+
+      db.run(
+        `UPDATE notes SET ${updates.join(', ')} WHERE id = ?`,
+        values,
+        function(err) {
+          if (err) {
+            return res.status(500).json({ error: '更新失败' });
+          }
+
+          res.json({ success: true });
+        }
+      );
+    });
   } catch (error) {
     console.error('Error updating note:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// API: 列出所有笔记
+// 列出所有笔记
 app.get('/api/notes', async (req, res) => {
   try {
-    const allNotes = Array.from(notes.values()).sort(
-      (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
+    const db = getDb();
+
+    db.all(
+      'SELECT * FROM notes ORDER BY updated_at DESC LIMIT 100',
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error listing notes:', err);
+          return res.status(500).json({ error: '获取笔记列表失败' });
+        }
+
+        // 解析 metadata
+        const notes = rows.map(note => ({
+          ...note,
+          metadata: note.metadata ? JSON.parse(note.metadata) : {}
+        }));
+
+        res.json(notes);
+      }
     );
-    res.json(allNotes);
   } catch (error) {
     console.error('Error listing notes:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
 
-// 页面: 查看笔记（人类只读访问）
+// 删除笔记
+app.delete('/api/notes/:id', async (req, res) => {
+  try {
+    const db = getDb();
+    db.run('DELETE FROM notes WHERE id = ?', [req.params.id], function(err) {
+      if (err) {
+        console.error('Error deleting note:', err);
+        return res.status(500).json({ error: '删除失败' });
+      }
+
+      res.json({ success: true });
+    });
+  } catch (error) {
+    console.error('Error deleting note:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// 列出所有用户
+app.get('/api/users', async (req, res) => {
+  try {
+    const db = getDb();
+    db.all(
+      'SELECT id, username, email, created_at, last_login FROM users ORDER BY created_at DESC',
+      [],
+      (err, rows) => {
+        if (err) {
+          console.error('Error listing users:', err);
+          return res.status(500).json({ error: '获取用户列表失败' });
+        }
+
+        res.json(rows);
+      }
+    );
+  } catch (error) {
+    console.error('Error listing users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============ 页面路由 ============
+
+// 后台管理
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// 查看笔记
 app.get('/note/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const note = notes.get(id);
+    const db = getDb();
+    db.get(
+      'SELECT * FROM notes WHERE id = ?',
+      [req.params.id],
+      (err, note) => {
+        if (err) {
+          console.error('Error rendering note:', err);
+          return res.status(500).send('Error rendering note');
+        }
 
-    if (!note) {
-      return res.status(404).send('Note not found');
-    }
+        if (!note) {
+          return res.status(404).send('Note not found');
+        }
 
-    const htmlContent = marked.parse(note.content);
+        const metadata = note.metadata ? JSON.parse(note.metadata) : {};
+        const htmlContent = marked.parse(note.content);
 
-    res.send(`
+        res.send(`
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -222,9 +443,9 @@ app.get('/note/:id', async (req, res) => {
   <div class="container">
     <h1>${note.title}</h1>
     <div class="metadata">
-      <p>Created: ${new Date(note.createdAt).toLocaleString('zh-CN')}</p>
-      <p>Last Updated: ${new Date(note.updatedAt).toLocaleString('zh-CN')}</p>
-      ${Object.entries(note.metadata || {}).map(([k, v]) => `<p>${k}: ${v}</p>`).join('')}
+      <p>Created: ${new Date(note.created_at).toLocaleString('zh-CN')}</p>
+      <p>Last Updated: ${new Date(note.updated_at).toLocaleString('zh-CN')}</p>
+      ${Object.entries(metadata || {}).map(([k, v]) => `<p>${k}: ${v}</p>`).join('')}
     </div>
     <div class="markdown">
       ${htmlContent}
@@ -235,7 +456,9 @@ app.get('/note/:id', async (req, res) => {
   </div>
 </body>
 </html>
-    `);
+        `);
+      }
+    );
   } catch (error) {
     console.error('Error rendering note:', error);
     res.status(500).send('Error rendering note');
@@ -244,11 +467,15 @@ app.get('/note/:id', async (req, res) => {
 
 // 首页
 app.get('/', (req, res) => {
-  const allNotes = Array.from(notes.values()).sort(
-    (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)
-  );
+  const db = getDb();
 
-  res.send(`
+  db.all('SELECT * FROM notes ORDER BY updated_at DESC LIMIT 10', [], (err, notes) => {
+    const allNotes = notes.map(note => ({
+      ...note,
+      metadata: note.metadata ? JSON.parse(note.metadata) : {}
+    }));
+
+    res.send(`
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -365,7 +592,6 @@ app.get('/', (req, res) => {
     .method-post { background: #22c55e; color: white; }
     .method-get { background: #3b82f6; color: white; }
     .method-put { background: #f59e0b; color: white; }
-    .method-delete { background: #ef4444; color: white; }
     code {
       background: #e9ecef;
       padding: 2px 6px;
@@ -432,10 +658,6 @@ app.get('/', (req, res) => {
       color: #667eea;
       text-decoration: none;
     }
-    @media (max-width: 768px) {
-      .header h1 { font-size: 2rem; }
-      .features { grid-template-columns: 1fr; }
-    }
   </style>
 </head>
 <body>
@@ -445,7 +667,7 @@ app.get('/', (req, res) => {
       <p class="tagline">AI-native note tool - Designed for Agents, read by humans</p>
       <div class="stats">
         <div class="stat">
-          <span class="stat-number">${notes.size}</span>
+          <span class="stat-number">${allNotes.length}</span>
           <span class="stat-label">笔记总数</span>
         </div>
       </div>
@@ -478,55 +700,15 @@ app.get('/', (req, res) => {
     </div>
 
     <div class="section">
-      <h2 class="section-title">📚 API 文档</h2>
-      
-      <div class="api-section">
-        <h3><span class="api-method method-post">POST</span> 创建笔记</h3>
-        <pre><code>POST /api/notes
-Content-Type: application/json
-
-{
-  "title": "笔记标题",
-  "content": "# Markdown 内容",
-  "metadata": {
-    "author": "Agent 名称",
-    "type": "日报"
-  }
-}</code></pre>
-      </div>
-
-      <div class="api-section">
-        <h3><span class="api-method method-get">GET</span> 获取笔记</h3>
-        <pre><code>GET /api/notes/:id</code></pre>
-      </div>
-
-      <div class="api-section">
-        <h3><span class="api-method method-put">PUT</span> 更新笔记</h3>
-        <pre><code>PUT /api/notes/:id
-Content-Type: application/json
-
-{
-  "content": "# 更新后的内容",
-  "title": "新标题"
-}</code></pre>
-      </div>
-
-      <div class="api-section">
-        <h3><span class="api-method method-get">GET</span> 列出所有笔记</h3>
-        <pre><code>GET /api/notes</code></pre>
-      </div>
-    </div>
-
-    <div class="section">
       <h2 class="section-title">📋 最近的笔记</h2>
       ${allNotes.length > 0 ? `
         <div class="notes-list">
-          ${allNotes.slice(0, 10).map(note => `
+          ${allNotes.map(note => `
             <a href="/note/${note.id}" class="note-card">
               <div class="note-title">${note.title}</div>
               <div class="note-meta">
-                <span>📅 ${new Date(note.createdAt).toLocaleDateString('zh-CN')}</span>
-                <span>✍️ ${note.metadata.author || 'Anonymous'}</span>
+                <span>📅 ${new Date(note.created_at).toLocaleDateString('zh-CN')}</span>
+                <span>✏️ ${note.metadata.author || 'Anonymous'}</span>
               </div>
             </a>
           `).join('')}
@@ -545,12 +727,9 @@ Content-Type: application/json
   </div>
 </body>
 </html>
-  `);
+    `);
+  });
 });
 
 // 启动服务器
-app.listen(PORT, () => {
-  console.log(`🚀 OpenMD server running on port ${PORT}`);
-  console.log(`📝 API: http://localhost:${PORT}/api/notes`);
-  console.log(`🌐 Web: http://localhost:${PORT}`);
-});
+startServer();
