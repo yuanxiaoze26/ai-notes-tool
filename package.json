@@ -2,10 +2,10 @@
   "name": "openmd",
   "version": "0.1.0",
   "description": "AI-native note tool for Agents",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
