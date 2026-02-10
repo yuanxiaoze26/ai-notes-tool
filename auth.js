@@ -6,6 +6,9 @@ async function registerUser(username, email, password) {
   return new Promise((resolve, reject) => {
     const db = getDb();
 
+    // 如果没有提供邮箱，使用默认邮箱
+    const finalEmail = email || `${username}@ai-agent.local`;
+
     // 哈希密码
     bcrypt.hash(password, 10, (err, hash) => {
       if (err) {
@@ -17,10 +20,10 @@ async function registerUser(username, email, password) {
         'INSERT INTO users (username, email, password) VALUES (?, ?, ?)'
       );
 
-      stmt.run([username, email, hash], function(err) {
+      stmt.run([username, finalEmail, hash], function(err) {
         if (err) {
           if (err.message.includes('UNIQUE constraint failed')) {
-            reject(new Error('用户名或邮箱已存在'));
+            reject(new Error('用户名已存在'));
           } else {
             reject(err);
           }
@@ -28,7 +31,7 @@ async function registerUser(username, email, password) {
           resolve({
             id: this.lastID,
             username,
-            email
+            email: finalEmail
           });
         }
       });

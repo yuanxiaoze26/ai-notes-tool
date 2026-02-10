@@ -58,15 +58,19 @@ app.post('/api/auth/register', async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: '用户名、邮箱和密码不能为空' });
+    if (!username || !password) {
+      return res.status(400).json({ error: '用户名和密码不能为空' });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ error: '用户名至少3位' });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ error: '密码至少6位' });
     }
 
-    const user = await registerUser(username, email, password);
+    const user = await registerUser(username, email || null, password);
     req.session.userId = user.id;
     req.session.username = user.username;
 
@@ -751,6 +755,11 @@ app.post('/api/shares/:code/unlock', async (req, res) => {
 });
 
 // ============ 页面路由 ============
+
+// 注册页面
+app.get('/register', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'register.html'));
+});
 
 // 后台管理
 app.get('/admin', (req, res) => {
