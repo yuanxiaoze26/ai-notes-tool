@@ -679,6 +679,166 @@ app.get('/note/:id', async (req, res) => {
     }
 
     const note = rows[0];
+
+    // 检查笔记是否是密码保护
+    if (note.visibility === 'password' && note.password) {
+      // 检查 session 中是否已解锁
+      if (!req.session.unlockedNotes || !req.session.unlockedNotes.includes(note.id)) {
+        // 显示密码输入页面
+        return res.send(`
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>密码保护 - ${note.title}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #f5f5f5;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 400px;
+    }
+    h1 {
+      color: #333333;
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 25px;
+      font-size: 14px;
+    }
+    #message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+    #message.error {
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fcc;
+      display: block;
+    }
+    #message.success {
+      background: #efe;
+      color: #3c3;
+      border: 1px solid #cfc;
+      display: block;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    input[type="password"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      outline: none;
+      border-color: #333333;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #333333;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔒 密码保护</h1>
+    <p class="subtitle">${note.title}</p>
+
+    <div id="message"></div>
+
+    <div class="form-group">
+      <label>请输入密码</label>
+      <input type="password" id="password" placeholder="输入密码以查看笔记" onkeypress="if(event.key==='Enter')unlock()">
+    </div>
+
+    <button onclick="unlock()">解锁查看</button>
+  </div>
+
+  <script>
+    async function unlock() {
+      const password = document.getElementById('password').value;
+      const messageDiv = document.getElementById('message');
+
+      if (!password) {
+        messageDiv.textContent = '请输入密码';
+        messageDiv.className = 'error';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/notes/${note.id}/unlock', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          messageDiv.textContent = '验证成功，正在跳转...';
+          messageDiv.className = 'success';
+          setTimeout(() => {
+            window.location.reload();
+          }, 500);
+        } else {
+          messageDiv.textContent = data.error || '密码错误，请重试';
+          messageDiv.className = 'error';
+        }
+      } catch (error) {
+        messageDiv.textContent = '网络错误，请重试';
+        messageDiv.className = 'error';
+      }
+    }
+  </script>
+</body>
+</html>
+        `);
+      }
+    }
+
     const metadata = note.metadata ? JSON.parse(note.metadata) : {};
     const htmlContent = marked.parse(note.content);
 
