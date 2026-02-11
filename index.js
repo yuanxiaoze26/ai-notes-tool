@@ -7,6 +7,7 @@ const path = require('path');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const MySQLStore = require('express-mysql-session')(session);
+const cookieParser = require('cookie-parser');
 
 const { initDatabase, getDb, executeQuery, executeUpdate, healthCheck } = require('./database');
 const { registerUser, loginUser, getUserById } = require('./auth');
@@ -33,6 +34,7 @@ app.use(async (req, res, next) => {
 // 中间件
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 
 // 配置 Session Store（根据数据库类型选择）
 // 修复环境变量中的换行符问题
@@ -466,6 +468,13 @@ app.post('/api/notes/:id/unlock', async (req, res) => {
     }
     req.session.unlockedNotes.push(note.id);
 
+    // 设置 cookie，7天有效
+    res.cookie(`unlocked_${note.id}`, 'true', {
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7天
+      httpOnly: false,
+      secure: process.env.NODE_ENV === 'production'
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error unlocking note:', error);
@@ -682,8 +691,11 @@ app.get('/note/:id', async (req, res) => {
 
     // 检查笔记是否是密码保护
     if (note.visibility === 'password' && note.password) {
-      // 检查 session 中是否已解锁
-      if (!req.session.unlockedNotes || !req.session.unlockedNotes.includes(note.id)) {
+      // 检查是否已解锁（session 或 cookie）
+      const unlockedFromCookie = req.cookies && req.cookies[`unlocked_${note.id}`];
+      const unlockedFromSession = req.session.unlockedNotes && req.session.unlockedNotes.includes(note.id);
+
+      if (!unlockedFromCookie && !unlockedFromSession) {
         // 显示密码输入页面
         return res.send(`
 <!DOCTYPE html>
@@ -796,6 +808,27 @@ app.get('/note/:id', async (req, res) => {
   </div>
 
   <script>
+    // 检查本地存储中是否已解锁
+    function checkUnlocked() {
+      const unlockedNotes = JSON.parse(localStorage.getItem('openmd_unlocked_notes') || '[]');
+      return unlockedNotes.includes(${note.id});
+    }
+
+    // 标记为已解锁（localStorage）
+    function markAsUnlocked() {
+      let unlockedNotes = JSON.parse(localStorage.getItem('openmd_unlocked_notes') || '[]');
+      if (!unlockedNotes.includes(${note.id})) {
+        unlockedNotes.push(${note.id});
+        localStorage.setItem('openmd_unlocked_notes', JSON.stringify(unlockedNotes));
+      }
+    }
+
+    // 页面加载时检查是否已解锁
+    if (checkUnlocked()) {
+      // 已解锁，直接刷新页面（服务器会通过 cookie 验证）
+      window.location.reload();
+    }
+
     async function unlock() {
       const password = document.getElementById('password').value;
       const messageDiv = document.getElementById('message');
@@ -812,12 +845,14 @@ app.get('/note/:id', async (req, res) => {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ password })
+          body: JSON.stringify({ password }),
+          credentials: 'include' // 包含 cookie
         });
 
         const data = await response.json();
 
         if (response.ok) {
+          markAsUnlocked(); // 保存到 localStorage
           messageDiv.textContent = '验证成功，正在跳转...';
           messageDiv.className = 'success';
           setTimeout(() => {
