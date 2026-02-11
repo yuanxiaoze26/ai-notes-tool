@@ -101,6 +101,7 @@ async function createMySqlTables() {
         metadata JSON,
         visibility ENUM('public', 'private', 'password') DEFAULT 'public',
         password VARCHAR(255) NULL,
+        author_token VARCHAR(128) NULL,
         expires_at TIMESTAMP NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -108,9 +109,25 @@ async function createMySqlTables() {
         INDEX idx_user_id (user_id),
         INDEX idx_updated_at (updated_at),
         INDEX idx_visibility (visibility),
-        INDEX idx_expires_at (expires_at)
+        INDEX idx_expires_at (expires_at),
+        INDEX idx_author_token (author_token)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+
+    // 如果表已存在但没有 author_token 字段，则添加
+    try {
+      await connection.query(`
+        ALTER TABLE notes ADD COLUMN IF NOT EXISTS author_token VARCHAR(128) NULL
+      `);
+      await connection.query(`
+        CREATE INDEX IF NOT EXISTS idx_author_token ON notes(author_token)
+      `);
+    } catch (err) {
+      // 忽略字段已存在的错误
+      if (!err.message.includes('Duplicate column name')) {
+        console.warn('⚠️  Warning adding author_token column:', err.message);
+      }
+    }
 
     // 分享链接表
     await connection.query(`
@@ -158,12 +175,20 @@ function createSqliteTables(db) {
       metadata TEXT,
       visibility TEXT DEFAULT 'public',
       password TEXT,
+      author_token TEXT,
       expires_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
+
+  // 如果表已存在，尝试添加 author_token 字段
+  db.run(`ALTER TABLE notes ADD COLUMN author_token TEXT`, (err) => {
+    if (err && !err.message.includes('duplicate column name')) {
+      console.warn('⚠️  Warning adding author_token column:', err.message);
+    }
+  });
 
   // 分享链接表
   db.run(`
