@@ -13,31 +13,21 @@ const { registerUser, loginUser, getUserById } = require('./auth');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 初始化数据库
-let db;
-async function startServer() {
-  try {
-    db = await initDatabase();
-    console.log('✅ Database initialized');
-    
-    // 健康检查
-    const health = await healthCheck();
-    console.log('🏥 Database health:', health.status);
-    if (health.status === 'healthy') {
-      console.log(`📡 Host: ${health.host}, Database: ${health.database}`);
+// 数据库初始化中间件（每个请求前确保数据库已初始化）
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    try {
+      await initDatabase();
+      dbInitialized = true;
+      console.log('✅ Database initialized for request');
+    } catch (err) {
+      console.error('❌ Database initialization failed:', err);
+      return res.status(500).json({ error: 'Database initialization failed' });
     }
-    
-    app.listen(PORT, () => {
-      console.log(`🚀 OpenMD server running on port ${PORT}`);
-      console.log(`📝 API: http://localhost:${PORT}/api/notes`);
-      console.log(`🌐 Web: http://localhost:${PORT}`);
-      console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
-  } catch (err) {
-    console.error('❌ Failed to start server:', err);
-    process.exit(1);
   }
-}
+  next();
+});
 
 // 中间件
 app.use(cors());
@@ -1243,5 +1233,27 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// 启动服务器
-startServer();
+// 启动服务器（仅在非 Vercel 环境）
+if (!process.env.VERCEL) {
+  initDatabase().then(() => {
+    console.log('✅ Database initialized');
+    return healthCheck();
+  }).then(health => {
+    console.log('🏥 Database health:', health.status);
+    if (health.status === 'healthy') {
+      console.log(`📡 Host: ${health.host}, Database: ${health.database}`);
+    }
+    app.listen(PORT, () => {
+      console.log(`🚀 OpenMD server running on port ${PORT}`);
+      console.log(`📝 API: http://localhost:${PORT}/api/notes`);
+      console.log(`🌐 Web: http://localhost:${PORT}`);
+      console.log(`🔐 Environment: ${process.env.NODE_ENV || 'development'}`);
+    });
+  }).catch(err => {
+    console.error('❌ Failed to start server:', err);
+    process.exit(1);
+  });
+}
+
+// 导出供 Vercel Serverless 使用
+module.exports = app;
