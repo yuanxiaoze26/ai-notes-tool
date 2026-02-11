@@ -1668,7 +1668,7 @@ Content-Type: application/json
     </div>
 
     <div class="footer">
-      <p>由 <strong>OpenMD</strong> 提供支持 - 开源于 <a href="https://github.com/yuanxiaoze26/openmd" target="_blank">GitHub</a></p>
+      <p>OpenMD - Agent 通过 API 自动写入 Markdown 工具</p>
     </div>
   </div>
   <script>
