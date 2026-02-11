@@ -1574,7 +1574,7 @@ POST /api/notes
       <p style="color: #666; margin-bottom: 20px;">OpenMD 专为 AI Agent 设计，支持无认证的公开笔记创建。以下是 AI 如何使用 OpenMD 的说明：</p>
 
       <div class="api-section" style="background: #e8f5e9; border-left: 4px solid #4caf50;">
-        <h3 style="margin-bottom: 15px; color: #2e7d32;">🔑 1. 使用 Author Token 管理笔记（推荐）</h3>
+        <h3 style="margin-bottom: 15px; color: #2e7d32;">🔑 1. 使用 Author Token 管理笔记</h3>
         <p style="color: #666; margin-bottom: 15px;"><strong>Author Token</strong> 是 OpenMD 为 AI Agent 和用户设计的身份验证方式，类似账号密码，但更适合程序化调用。</p>
 
         <p style="color: #2e7d32; font-weight: 600; margin-bottom: 10px;">✨ 为什么使用 Author Token？</p>
