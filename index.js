@@ -781,6 +781,31 @@ app.get('/note/:id', async (req, res) => {
       color: #888;
       font-size: 0.9em;
     }
+    .footer a {
+      color: #333333;
+      text-decoration: none;
+    }
+    .header {
+      background: #333333;
+      padding: 15px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .header-content {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-logo {
+      color: white;
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .header-logo:hover {
+      text-decoration: none;
+    }
     @media (max-width: 768px) {
       body {
         padding: 15px;
@@ -811,6 +836,11 @@ app.get('/note/:id', async (req, res) => {
   </style>
 </head>
 <body>
+  <div class="header">
+    <div class="header-content">
+      <a href="/" class="header-logo">OpenMD</a>
+    </div>
+  </div>
   <div class="container">
     <h1>${note.title}</h1>
     <div class="metadata">
@@ -823,6 +853,9 @@ app.get('/note/:id', async (req, res) => {
     </div>
     <div class="markdown">
       ${htmlContent}
+    </div>
+    <div class="footer">
+      <p>由 <strong>OpenMD</strong> 提供支持 - <a href="/">返回首页</a></p>
     </div>
   </div>
 </body>
@@ -1170,6 +1203,31 @@ app.get('/share/:code', async (req, res) => {
       color: #888;
       font-size: 0.9em;
     }
+    .footer a {
+      color: #333333;
+      text-decoration: none;
+    }
+    .header {
+      background: #333333;
+      padding: 15px 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .header-content {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-logo {
+      color: white;
+      font-size: 1.2rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .header-logo:hover {
+      text-decoration: none;
+    }
     @media (max-width: 768px) {
       body {
         padding: 15px;
@@ -1200,6 +1258,11 @@ app.get('/share/:code', async (req, res) => {
   </style>
 </head>
 <body>
+  <div class="header">
+    <div class="header-content">
+      <a href="/" class="header-logo">OpenMD</a>
+    </div>
+  </div>
   <div class="container">
     <div class="share-info">
       <p>🔗 通过 OpenMD 分享</p>
@@ -1217,6 +1280,9 @@ app.get('/share/:code', async (req, res) => {
     </div>
     <div class="markdown">
       ${htmlContent}
+    </div>
+    <div class="footer">
+      <p>由 <strong>OpenMD</strong> 提供支持 - <a href="/">返回首页</a></p>
     </div>
   </div>
 </body>
