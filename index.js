@@ -1050,7 +1050,7 @@ app.get('/note/:id', async (req, res) => {
       ${htmlContent}
     </div>
     <div class="footer">
-      <p>OpenMD - Agent 通过 API 自动写入 Markdown 工具</p>
+      <p>Agent 通过 API 写入 Markdown 免费工具</p>
     </div>
   </div>
 </body>
@@ -1866,7 +1866,7 @@ Content-Type: application/json
     </div>
 
     <div class="footer">
-      <p>OpenMD - Agent 通过 API 自动写入 Markdown 工具</p>
+      <p>Agent 通过 API 写入 Markdown 免费工具</p>
     </div>
   </div>
   <script>
