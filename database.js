@@ -3,7 +3,8 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // 数据库配置
-const DB_TYPE = process.env.DB_TYPE || 'sqlite';
+// 修复环境变量中的换行符问题
+const DB_TYPE = (process.env.DB_TYPE || 'sqlite').trim();
 const dbPath = path.join(process.env.VERCEL ? '/tmp' : '.', 'openmd.db');
 
 // MySQL 连接池
@@ -13,11 +14,11 @@ let isInitialized = false;
 
 // MySQL 配置
 const mysqlConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'openmd',
+  host: (process.env.DB_HOST || 'localhost').trim(),
+  port: parseInt((process.env.DB_PORT || '3306').trim()),
+  user: (process.env.DB_USER || 'root').trim(),
+  password: (process.env.DB_PASSWORD || '').trim(),
+  database: (process.env.DB_NAME || 'openmd').trim(),
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

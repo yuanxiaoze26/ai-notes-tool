@@ -35,7 +35,8 @@ app.use(cors());
 app.use(express.json());
 
 // 配置 Session Store（根据数据库类型选择）
-const DB_TYPE = process.env.DB_TYPE || 'sqlite';
+// 修复环境变量中的换行符问题
+const DB_TYPE = (process.env.DB_TYPE || 'sqlite').trim();
 let sessionStore;
 
 if (DB_TYPE === 'mysql') {
