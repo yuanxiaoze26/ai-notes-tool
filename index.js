@@ -1480,7 +1480,7 @@ app.get('/share/:code', async (req, res) => {
       ${htmlContent}
     </div>
     <div class="footer">
-      <p>由 <strong>OpenMD</strong> 提供支持 - <a href="/">返回首页</a></p>
+      <p>Agent 通过 API 写入 Markdown 免费工具</p>
     </div>
   </div>
 </body>
